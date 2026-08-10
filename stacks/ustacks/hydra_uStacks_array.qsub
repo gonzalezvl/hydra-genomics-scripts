@@ -1,0 +1,74 @@
+# /bin/bash
+# ----------------Parameters---------------------- #
+#$ -S /bin/bash
+#$ -t 1-6
+#$ -pe mthread 6
+#$ -q mThM.q
+#$ -l mres=60G,h_data=10G,h_vmem=10G,himem
+#$ -cwd
+#$ -j y
+#$ -N ustacks-array
+#$ -o log_files/ustacks-$TASK_ID.log
+#
+# ----------------Modules------------------------- #
+module load bioinformatics/stacks/2.66
+#
+# ----------------Your Commands------------------- #
+#
+echo + `date` job $JOB_NAME started in $QUEUE with jobID=$JOB_ID on $HOSTNAME
+echo + NSLOTS = $NSLOTS
+echo + SGE_TASK_ID = $SGE_TASK_ID
+#
+
+ustacks --version
+
+# ---------- EDIT HERE ----------
+workdir="/scratch/nmnh_ggi/gonzalezv/mccormick_test/Small_array_test"
+outdir="/scratch/nmnh_ggi/gonzalezv/mccormick_test/Small_array_test/Isotria_stacks"
+
+# ---------- Get FQ file for this array task ----------
+mapfile -t FQ_FILES < <(find "$workdir" -maxdepth 1 -type f -name "*.1.fq.gz" ! -name "*.rem.1.fq.gz" | sort)
+
+# Convert SGE's 1-based task ID to bash's 0-based array index
+idx=$((SGE_TASK_ID - 1))
+
+# Check if any FQ files exist
+if [ ${#FQ_FILES[@]} -eq 0 ]; then
+    echo "ERROR: No .1.fq.gz files found in $workdir"
+    exit 1
+fi
+
+# Check array bounds
+if [ "$idx" -ge "${#FQ_FILES[@]}" ]; then
+    echo "ERROR: Task ID $SGE_TASK_ID exceeds number of samples (${#FQ_FILES[@]})"
+    exit 1
+fi
+
+#set variables
+
+R1="${FQ_FILES[$idx]}"
+id=$SGE_TASK_ID
+
+# ---------- Extract sample name ----------
+sample=$(basename "$R1" .1.fq.gz)
+
+# ---------- Processing ----------
+echo "Processing sample: $sample at $(date)"
+echo "Input file: $R1"
+echo "Ustacks id: $id"
+echo "Working directory: $workdir"
+echo "Output directory: $outdir"
+echo "Number of threads: ${NSLOTS}"
+
+# ---------- Run ustacks ----------
+ustacks \
+        -f "${R1}" \
+        -o "${outdir}" \
+        -i "${id}" \
+        --name "${sample}" \
+        -M 4 \
+        -p "$NSLOTS" \
+        -t gzfastq
+
+#
+echo = `date` job $JOB_NAME done

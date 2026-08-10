@@ -1,0 +1,94 @@
+# /bin/sh
+# ----------------Parameters---------------------- #
+#$ -S /bin/sh
+#$ -t 1-100
+#$ -pe mthread 10
+#$ -q mThM.q
+#$ -l mres=100G,h_data=10G,h_vmem=10G,himem
+#$ -cwd
+#$ -j y
+#$ -N sstacks-array
+#$ -o log_files_sstacks/sstacks-$TASK_ID.log
+#
+# ----------------Modules------------------------- #
+module load bioinformatics/stacks/2.66
+#
+# ----------------Your Commands------------------- #
+#
+echo + `date` job $JOB_NAME started in $QUEUE with jobID=$JOB_ID on $HOSTNAME
+echo + NSLOTS = $NSLOTS
+#
+# ---------------- Job Information --------------- #
+echo "+ $(date) job $JOB_NAME started"
+echo "+ HOSTNAME = $HOSTNAME"
+echo "+ JOB_ID = $JOB_ID"
+echo "+ SGE_TASK_ID = $SGE_TASK_ID"
+echo "+ NSLOTS = $NSLOTS"
+
+sstacks --version
+
+# ---------------- EDIT HERE --------------------- #
+
+# Directory containing Stacks output files
+stacks_dir="/path/to/stacks/directory"
+
+# Full path to directory containing catalog output from ccstacks
+catalog="${stacks_dir}"
+
+# Create output directory for sstacks if it does not already exist
+mkdir -p "${stacks_dir}/sstacks_out"
+
+#------------- Get sample list from cstacks catalog -------------- #
+
+SAMPLES=$(find "${stacks_dir}" -maxdepth 1 \
+    -type f \
+    -name "*.tags.tsv.gz" \
+    ! -name "catalog.tags.tsv.gz" \
+    | sed 's|.*/||' \
+    | sed 's/.tags.tsv.gz//' \
+    | sort)
+
+# Total number of samples
+sample_count=$(echo "$SAMPLES" | wc -l)
+
+# Select sample corresponding to this array task
+sample=$(echo "$SAMPLES" | sed -n "${SGE_TASK_ID}p")
+
+# ---------------- Validation ------------------- #
+
+if [ "$sample_count" -eq 0 ]; then
+    echo "ERROR: No sample tags files found."
+    exit 1
+fi
+
+if [ "$SGE_TASK_ID" -gt "$sample_count" ]; then
+    echo "ERROR: Task ID $SGE_TASK_ID exceeds sample count ($sample_count)."
+    exit 1
+fi
+
+if [ -z "$sample" ]; then
+    echo "ERROR: No sample found for task $SGE_TASK_ID"
+    exit 1
+fi
+
+# ---------------- Sample information ----------- #
+
+echo "Processing sample: $sample"
+echo "Stacks directory: $stacks_dir"
+echo "Catalog prefix: $catalog"
+echo "Output directory: ${stacks_dir}/sstacks_out"
+
+# ---------------- Run sstacks ------------------ #
+
+sstacks \
+    -c "${catalog}" \
+    -s "${stacks_dir}/${sample}" \
+    -p "${NSLOTS}" \
+    -o "${stacks_dir}/sstacks_out"
+
+# Job Complete
+
+echo "= $(date) job $JOB_NAME finished"
+
+#
+echo = `date` job $JOB_NAME done

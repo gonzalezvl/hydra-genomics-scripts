@@ -1,0 +1,164 @@
+# ustacks Array Job Script for use on SI Hydra 
+
+Script name:hydra_uStacks_array.qsub
+
+##TLDR
+--------
+EDIT :
+#$ -t 1-6 #Adjust the array size to match the number of samples, this submits 6 tasks/samples
+workdir=/path/to/input_fastq_files
+outdir=/path/to/output_directory
+
+SUBMIT JOB:
+qsub hydra_uStacks_array.qsub
+
+##Overview
+--------
+This script submits a SGE array job to run ustacks from the Stacks v2.66 pipeline on multiple FASTQ files in parallel. Each array task processes one compressed FASTQ file (*.1.fq.gz) and generates a catalog of loci for an individual sample.
+
+The script automatically:
+- Discovers input FASTQ files in a specified directory.
+- Assigns one sample per array task.
+- Extracts sample names from file names.
+- Writes output files to a designated output directory.
+- Logs progress and job information.
+
+##Requirements
+------------
+Software:
+- Sun Grid Engine (SGE)
+- Stacks v2.66
+
+Module loaded:
+module load bioinformatics/stacks/2.66
+
+##Input Files
+-----------
+Input files must be gzipped FASTQ files named:
+sample_name.1.fq.gz
+
+Files matching *.rem.1.fq.gz are excluded.
+
+##Resource Requests (as default)
+-----------------
+- Array Tasks: 1-N (N is the total number of samples you want to process)
+- Threads per Task: 6 (#$ -pe mthread 6; this can be adjusted if you need more or less threads)
+- Queue: mThM.q
+- Total Memory Reservation: 60 GB (#$ -l mres=60G; if you adjust the number of threads you will need to adjust this as well)
+- Memory per thread: 10 GB (h_data=10G)
+- Virtual Memory per thread: 10 GB (h_vmem=10G)
+- High-Memory Node: Yes (himem)
+
+##Directory Configuration
+-----------------------
+Modify before running:
+workdir=/path/to/input_fastq_files
+outdir=/path/to/output_directory
+
+##How the Array Job Works
+-----------------------
+1. Locate all *.1.fq.gz files.
+2. Convert SGE task IDs from 1-based indexing to bash array indexing.
+3. Assign one file per array task.
+4. Run ustacks on the assigned sample.
+
+##Sample Name Extraction
+----------------------
+Example:
+Input: Sample_001.1.fq.gz
+Output sample name: Sample_001
+
+##Ustacks Parameters
+------------------
+-f : Input FASTQ file
+-o : Output directory
+-i : Unique sample ID
+--name : Sample name
+-M 4 : Maximum mismatches allowed between stacks
+-p : Number of processing threads
+-t gzfastq : Input format
+
+##Error Checking
+--------------
+The script checks:
+- No input FASTQ files found.
+- Array task exceeds the number of available samples.
+
+##Output
+------
+Results are written to the output directory.
+Typical files include:
+- sample.tags.tsv.gz
+- sample.snps.tsv.gz
+- sample.alleles.tsv.gz
+
+##Logging
+-------
+Logs are written to:
+log_files/ustacks-<TASK_ID>.log
+
+##Example workflow
+----------------
+Input FASTQ Files
+    |
+    +-- sample01.1.fq.gz
+    +-- sample02.1.fq.gz
+    +-- sample03.1.fq.gz
+            |
+            v
+      qsub ustack_array.qsub
+            |
+            v
+      SGE Array Job
+            |
+    +-------+-------+
+    |       |       |
+  Task1   Task2   Task3
+    |       |       |
+sample01 sample02 sample03
+    |       |       |
+    +-------+-------+
+            |
+            v
+          ustacks
+            |
+            v
+      Output Files
+            |
+    +-- *.tags.tsv.gz
+    +-- *.snps.tsv.gz
+    +-- *.alleles.tsv.gz
+
+
+##Submitting the Job
+------------------
+```
+qsub hydra_uStacks_array.qsub
+```
+
+## Workflow Position
+------------------
+```
+process_radtags
+    ↓
+ustacks *← this script, hydra_uStacks_array.qsub
+    ↓
+cstacks ← hydra_cStacks.qsub
+    ↓
+sstacks ← hydra_sStacks_array.qsub
+    ↓
+tsv2bam
+    ↓
+gstacks
+    ↓
+populations
+```
+
+Notes
+-----
+- Ensure the output directory exists before running.
+- Adjust the array size to match the number of samples.
+- Each sample receives a unique ustacks ID based on the SGE task number.
+- The script will only process one FASTQ file per sample (*.1.fq.gz).
+
+<Mon Jul 27 18:54:45 EDT 2026 V.L.G >
