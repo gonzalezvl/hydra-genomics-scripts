@@ -1,0 +1,96 @@
+# /bin/sh
+# ----------------Parameters---------------------- #
+#$ -S /bin/sh
+#$ -pe mthread 32
+#$ -q mThM.q
+#$ -l mres=320G,h_data=10G,h_vmem=100G,himem
+#$ -cwd
+#$ -j y
+#$ -N stacks_tsv2bam
+#$ -o stacks_tsv2bam.log
+#
+# ----------------Modules------------------------- #
+module load bioinformatics/stacks/2.66
+#
+# ----------------Your Commands------------------- #
+#
+echo + `date` job $JOB_NAME started in $QUEUE with jobID=$JOB_ID on $HOSTNAME
+echo + NSLOTS = $NSLOTS
+#
+# ---------------- Validation ------------------- #
+
+# ---------------- Edit HERE ------------------- #
+STACKS_DIR="/path/to/stacks_directory"
+POPMAP="/path/to/popmap.txt"
+READS_DIR="/path/to/paired_end_reads"
+
+# Check required paths exist
+[ -d "$STACKS_DIR" ] || { echo "ERROR: STACKS_DIR not found: $STACKS_DIR"; exit 1; }
+[ -f "$POPMAP" ] || { echo "ERROR: POPMAP not found: $POPMAP"; exit 1; }
+[ -d "$READS_DIR" ] || { echo "ERROR: READS_DIR not found: $READS_DIR"; exit 1; }
+
+echo "Validating samples in popmap..."
+
+missing=0
+
+while read sample population
+do
+    # Skip blank lines
+    [ -z "$sample" ] && continue
+
+    # Check Stacks output files
+    if [ ! -f "${STACKS_DIR}/${sample}.matches.tsv.gz" ]; then
+        echo "ERROR: Missing ${sample}.matches.tsv.gz"
+        missing=1
+    fi
+
+    if [ ! -f "${STACKS_DIR}/${sample}.tags.tsv.gz" ]; then
+        echo "ERROR: Missing ${sample}.tags.tsv.gz"
+        missing=1
+    fi
+
+	# Check paired-end read files
+	r1=$(find "$READS_DIR" -type f \
+    	! -name "*.rem.1.fq.gz" \
+    	\( \
+        	-name "${sample}*R1*.fastq.gz" -o \
+        	-name "${sample}*_1.fastq.gz" -o \
+        	-name "${sample}*.1.fq.gz" \
+   	 \) | head -n 1)
+
+	r2=$(find "$READS_DIR" -type f \
+    	! -name "*.rem.2.fq.gz" \
+    	\( \
+        	-name "${sample}*R2*.fastq.gz" -o \
+        	-name "${sample}*_2.fastq.gz" -o \
+       		-name "${sample}*.2.fq.gz" \
+    	\) | head -n 1)
+	
+	if [ -z "$r1" ]; then
+	    echo "ERROR: No R1 read file found for sample ${sample}"
+	    missing=1
+	else
+	    echo "Found R1: $r1"
+	fi
+	
+	if [ -z "$r2" ]; then
+	    echo "ERROR: No R2 read file found for sample ${sample}"
+	    missing=1
+	else
+	    echo "Found R2: $r2"
+	fi
+	
+done < "$POPMAP"
+
+if [ "$missing" -ne 0 ]; then
+    echo "Validation failed. One or more required files are missing."
+    exit 1
+fi
+
+echo "Validation passed."
+
+# ---------------- Run Script ------------------- #
+
+tsv2bam -t $NSLOTS -P "${STACKS_DIR}" -M "${POPMAP}" --pe-reads-dir "${READS_DIR}"
+#
+echo = `date` job $JOB_NAME done
